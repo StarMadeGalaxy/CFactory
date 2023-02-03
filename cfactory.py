@@ -9,6 +9,7 @@
 import subprocess
 import fnmatch
 import os
+import shutil
 import platform
 import hashlib
 import json
@@ -36,8 +37,14 @@ class CFactory:
         self.compiler = compiler
         self.build_command: list = [compiler, "-o"]
 
+        self.executable_name = self.project_name.lower()
+
         CFactory.insert_after(self.build_command, self.compiler, compiler_opts)
 
+    def run(self):
+        what_to_run = os.path.join(self.build_dir_path, self.executable_name)
+        subprocess.call([what_to_run])
+        
     def build(
             self, to_build: bool = True, delete_intermediate: bool = False, 
             print_command: bool = False, update_cache: bool = False, extension: str = "cpp",
@@ -50,22 +57,25 @@ class CFactory:
         loaded_hash = dict(CFactory.load_files_cache(self.json_cache_file_path))
         changed_files = list(CFactory.get_changed_files(all_files_hash, loaded_hash))
 
-        executable_name = self.project_name.lower()
+        clang_libs_name = list()
         
         if self.current_platform == "Windows":
             self.dynamic_libs += list(CFactory.find_files(self.project_root_path, "dll"))
             self.static_libs += list(CFactory.find_files(self.project_root_path, "lib"))
-            executable_name += ".exe"
+            print("Dynamic libs:", self.dynamic_libs)
+            self.__copy_files_to_dir(self.dynamic_libs, self.build_dir_path)
+            clang_libs_name = [lib for lib in self.static_libs]
+            self.executable_name += ".exe"
         elif self.current_platform == "Linux": 
             self.dynamic_libs += list(CFactory.find_files(self.project_root_path, "so"))
             self.static_libs += list(CFactory.find_files(self.project_root_path, "a"))
             libs_directories = set(CFactory.find_files_dir(self.project_root_path, "so"))
             self.__dynamic_linker_search_libs_path(libs_directories)
-            executable_name += ".bin"
+            clang_libs_name = ["-l:" + CFactory.get_last_name_path(lib) for lib in self.dynamic_libs]
+            self.executable_name += ".bin"
 
-        CFactory.insert_after(self.build_command, "-o", [executable_name])
-        clang_libs_name = ["-l:" + CFactory.get_last_name_path(lib) for lib in self.dynamic_libs]
-        CFactory.insert_after(self.build_command, executable_name, clang_libs_name)
+        CFactory.insert_after(self.build_command, "-o", [self.executable_name])
+        CFactory.insert_after(self.build_command, self.executable_name, clang_libs_name)
 
         self.__goto_build_dir()
         self.__compile_without_linking(changed_files, print_command=print_command)
@@ -115,6 +125,11 @@ class CFactory:
         dynamic_linker_rpath_list = ["-Wl", *["-rpath=" + path for path in pathes]]
         linker_comma_sep_args = ','.join(dynamic_linker_rpath_list)
         self.build_command += [linker_comma_sep_args]
+
+    def __copy_files_to_dir(self, files: list, dir: str):
+        for file in files:
+            if not os.path.exists(file):
+                shutil.copyfile(file, os.path.join(dir, CFactory.get_last_name_path(file)))
 
     def __open_build_directory(self):
         os.chdir(self.build_dir_path)
@@ -197,4 +212,3 @@ class CFactory:
     def insert_after(dest: list, element_after: str, sources: list):
         for source in reversed(sources):
             dest.insert(dest.index(element_after) + 1, source)
-    
