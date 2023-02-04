@@ -58,6 +58,8 @@ class CFactory:
         changed_files = list(CFactory.get_changed_files(all_files_hash, loaded_hash))
 
         clang_libs_name = list()
+
+        self.__goto_build_dir()
         
         if self.current_platform == "Windows":
             self.dynamic_libs += list(CFactory.find_files(self.project_root_path, "dll"))
@@ -77,7 +79,6 @@ class CFactory:
         CFactory.insert_after(self.build_command, "-o", [self.executable_name])
         CFactory.insert_after(self.build_command, self.executable_name, clang_libs_name)
 
-        self.__goto_build_dir()
         self.__compile_without_linking(changed_files, print_command=print_command)
 
         print("All files hash:", all_files_hash)
@@ -128,7 +129,7 @@ class CFactory:
 
     def __copy_files_to_dir(self, files: list, dir: str):
         for file in files:
-            if not os.path.exists(file):
+            if os.path.exists(file):
                 shutil.copyfile(file, os.path.join(dir, CFactory.get_last_name_path(file)))
 
     def __open_build_directory(self):
